@@ -10,4 +10,4 @@ Versión de demostración funcional del reproductor de **NovaPlay** diseñada pa
 
 ---
 **Desarrollado por MSGT**  
-© 2026 NovaPlay TV.
+© 2026 NovaPlay GO.
