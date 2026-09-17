@@ -1,4 +1,4 @@
-﻿# 🧪 NovaPlay | Web Demo
+# 🧪 NovaPlay | Web Demo
 
 Versión de demostración funcional del reproductor de **NovaPlay** diseñada para navegadores web modernos.
 
@@ -9,5 +9,5 @@ Versión de demostración funcional del reproductor de **NovaPlay** diseñada pa
 *   **Compatibilidad**: Soporte para streaming de baja latencia y protocolos adaptativos.
 
 ---
-**Desarrollado por MSGT**  
+****  
 © 2026 NovaPlay GO.
