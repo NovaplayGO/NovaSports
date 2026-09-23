@@ -108,7 +108,7 @@
             const data = await fetchSafeData("obtener_json");
             if (!data) return "";
             for (const cat of data) {
-                const ch = (cat.items || []).find(i => i.name === "NOVASPORTS");
+                const ch = (cat.items || []).find(i => i.name === "ZUPER PLAY");
                 if (ch) return ch.url || "";
             }
         } catch (e) { log("Error datos: " + e.message); }
