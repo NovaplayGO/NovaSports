@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <meta name="referrer" content="no-referrer">
     <title>NOVASPORTS LIVE</title>
     <link rel="icon" type="image/webp" href="https://raw.githubusercontent.com/novaplaygo/novaimg/main/novasplash.webp">
@@ -15,11 +15,11 @@
             --overlay: rgba(0, 0, 0, 0.7);
         }
 
-        * { box-sizing: border-box; }
+        * { box-sizing: border-box; -webkit-user-select: none; -moz-user-select: none; -ms-user-select: none; user-select: none; }
         html, body { margin: 0; padding: 0; width: 100%; height: 100%; background: var(--bg); overflow: hidden; font-family: 'Inter', sans-serif; }
 
         #player-container { width: 100vw; height: 100vh; position: relative; display: flex; align-items: center; justify-content: center; background: #000; }
-        video { width: 100%; height: 100%; object-fit: contain; background: #000; }
+        video { width: 100%; height: 100%; object-fit: contain; background: #000; pointer-events: auto; }
 
         /* Pantalla Evento Finalizado */
         #event-ended { position: absolute; inset: 0; z-index: 5000; display: none; align-items: center; justify-content: center; flex-direction: column; background: var(--bg); text-align: center; padding: 30px; }
@@ -48,7 +48,7 @@
     <div id="loader"></div>
     <div id="debug-log"></div>
 
-    <video id="video" autoplay playsinline muted controls disablepictureinpicture controlslist="nodownload"></video>
+    <video id="video" autoplay playsinline muted controls disablepictureinpicture controlslist="nodownload noremoteplayback"></video>
 
     <img src="https://raw.githubusercontent.com/novaplaygo/novaimg/main/novasplash.webp" class="watermark" alt="NovaPlay">
 
@@ -65,6 +65,21 @@
 
 <script>
 (function() {
+    // Protección estricta contra copia, inspección y modo desarrollador
+    document.addEventListener('contextmenu', e => e.preventDefault());
+    document.addEventListener('keydown', e => {
+        if (
+            e.keyCode === 123 || // F12
+            (e.ctrlKey && e.shiftKey && (e.keyCode === 73 || e.keyCode === 74 || e.keyCode === 67)) || // Ctrl+Shift+I/J/C
+            (e.ctrlKey && (e.keyCode === 85 || e.keyCode === 83 || e.keyCode === 65)) // Ctrl+U/S/A
+        ) {
+            e.preventDefault();
+            return false;
+        }
+    });
+    document.onselectstart = () => false;
+    document.oncopy = () => false;
+
     const video = document.getElementById('video');
     const loader = document.getElementById('loader');
     const eventEnded = document.getElementById('event-ended');
@@ -111,15 +126,8 @@
                 const ch = (cat.items || []).find(i => i.name === "TIGO SPORTS #1");
                 if (ch) return ch.url || "";
             }
-        } catch (e) { log("Error datos: " + e.message); }
+        } catch (e) { console.error("Error datos: " + e.message); }
         return "";
-    }
-
-    async function validateSignal(url) {
-        try {
-            const r = await fetch(url, { method: 'HEAD', cache: 'no-store' });
-            return r.ok;
-        } catch (e) { return null; }
     }
 
     async function playSignal(url) {
@@ -131,7 +139,19 @@
 
         if (Hls.isSupported()) {
             if (hls) hls.destroy();
-            hls = new Hls({ lowLatencyMode: true, manifestLoadingMaxRetry: 0 });
+            hls = new Hls({
+                lowLatencyMode: true,
+                maxBufferLength: 60,
+                maxMaxBufferLength: 600,
+                maxBufferSize: 60 * 1000 * 1000,
+                liveSyncDurationCount: 3,
+                fragLoadingMaxRetry: 6,
+                fragLoadingRetryDelay: 1000,
+                manifestLoadingMaxRetry: 6,
+                manifestLoadingRetryDelay: 1000,
+                levelLoadingMaxRetry: 6,
+                levelLoadingRetryDelay: 1000
+            });
             hls.loadSource(url);
             hls.attachMedia(video);
             hls.on(Hls.Events.MANIFEST_PARSED, () => {
@@ -140,9 +160,21 @@
             });
             hls.on(Hls.Events.ERROR, (e, d) => {
                 if (d.fatal) {
-                    endedUrl = url;
-                    eventEnded.style.display = 'flex';
-                    loader.style.display = 'none';
+                    switch (d.type) {
+                        case Hls.ErrorTypes.NETWORK_ERROR:
+                            console.log("Error de red fatal, reconectando HLS...");
+                            hls.startLoad();
+                            break;
+                        case Hls.ErrorTypes.MEDIA_ERROR:
+                            console.log("Error de media fatal, recuperando fragmento...");
+                            hls.recoverMediaError();
+                            break;
+                        default:
+                            endedUrl = url;
+                            eventEnded.style.display = 'flex';
+                            loader.style.display = 'none';
+                            break;
+                    }
                 }
             });
         } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
@@ -161,10 +193,26 @@
         }
     }
 
-    fsBtn.onclick = () => {
-        if (!document.fullscreenElement) document.getElementById('player-container').requestFullscreen();
-        else document.exitFullscreen();
-    };
+    // Forzar pantalla completa obligatoria al interactuar
+    function goFullscreen() {
+        const elem = document.documentElement;
+        if (!document.fullscreenElement && !document.webkitFullscreenElement) {
+            if (elem.requestFullscreen) elem.requestFullscreen().catch(() => {});
+            else if (elem.webkitRequestFullscreen) elem.webkitRequestFullscreen();
+        }
+    }
+
+    document.addEventListener('click', goFullscreen);
+    document.addEventListener('touchstart', goFullscreen);
+
+    fsBtn.onclick = goFullscreen;
+
+    // Watchdog de congelamiento / pausa automática
+    setInterval(() => {
+        if (video.paused && !video.ended && currentUrl) {
+            video.play().catch(() => {});
+        }
+    }, 4000);
 
     setInterval(monitor, 30000);
     monitor();
