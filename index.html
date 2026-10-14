@@ -6,7 +6,8 @@
     <meta name="referrer" content="no-referrer">
     <title>NOVASPORTS LIVE</title>
     <link rel="icon" type="image/webp" href="https://raw.githubusercontent.com/novaplaygo/novaimg/main/novasplash.webp">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/hls.js/1.5.7/hls.min.js"></script>
+    <!-- Shaka Player CDN (Google) - El reproductor más robusto contra recargas y buffering -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/shaka-player/4.7.11/shaka-player.compiled.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap" rel="stylesheet">
     <style>
         :root {
@@ -31,8 +32,6 @@
         /* UI Overlays */
         .watermark { position: absolute; top: 30px; right: 30px; width: 100px; opacity: 0.5; pointer-events: none; z-index: 1000; transition: 0.3s; }
 
-        #debug-log { position: absolute; top: 20px; left: 20px; background: rgba(0,0,0,0.8); border: 1px solid #333; border-radius: 10px; color: #0f0; font-family: monospace; font-size: 10px; z-index: 9999; max-height: 150px; overflow-y: auto; width: 250px; padding: 15px; display: none; }
-
         #fullscreen-btn { position: absolute; bottom: 30px; right: 30px; z-index: 2000; width: 50px; height: 50px; border: none; border-radius: 50%; background: rgba(255, 255, 255, 0.1); backdrop-filter: blur(10px); color: white; font-size: 24px; cursor: pointer; opacity: 0; transition: 0.3s; display: flex; align-items: center; justify-content: center; }
         #player-container:hover #fullscreen-btn, #player-container:hover .watermark { opacity: 1; }
         #fullscreen-btn:hover { background: var(--primary); transform: scale(1.1); }
@@ -46,7 +45,6 @@
 
 <div id="player-container">
     <div id="loader"></div>
-    <div id="debug-log"></div>
 
     <video id="video" autoplay playsinline controls disablepictureinpicture controlslist="nodownload noremoteplayback"></video>
 
@@ -85,9 +83,8 @@
     const eventEnded = document.getElementById('event-ended');
     const eventStatus = document.getElementById('event-status');
     const fsBtn = document.getElementById('fullscreen-btn');
-    const logger = document.getElementById('debug-log');
 
-    let hls = null;
+    let player = null;
     let currentUrl = "";
     let endedUrl = "";
     const CONNECTOR_URL = "https://mrghnngupolsgatcmevw.supabase.co/functions/v1/access_connector";
@@ -131,58 +128,61 @@
     }
 
     async function playSignal(url) {
-        if (endedUrl === url || (currentUrl === url && hls)) return;
+        if (endedUrl === url || (currentUrl === url && player)) return;
 
         loader.style.display = 'block';
         currentUrl = url;
         eventEnded.style.display = 'none';
 
-        if (Hls.isSupported()) {
-            if (hls) hls.destroy();
-            hls = new Hls({
-                lowLatencyMode: false,
-                maxBufferLength: 120,
-                maxMaxBufferLength: 600,
-                maxBufferSize: 120 * 1000 * 1000,
-                liveSyncDurationCount: 6,
-                liveMaxLatencyDurationCount: 30,
-                fragLoadingMaxRetry: 10,
-                fragLoadingRetryDelay: 2000,
-                manifestLoadingMaxRetry: 10,
-                manifestLoadingRetryDelay: 2000,
-                levelLoadingMaxRetry: 10,
-                levelLoadingRetryDelay: 2000
-            });
-            hls.loadSource(url);
-            hls.attachMedia(video);
-            hls.on(Hls.Events.MANIFEST_PARSED, () => {
-                video.muted = false;
-                video.play().catch(() => {});
-                loader.style.display = 'none';
-            });
-            hls.on(Hls.Events.ERROR, (e, d) => {
-                if (d.fatal) {
-                    switch (d.type) {
-                        case Hls.ErrorTypes.NETWORK_ERROR:
-                            console.log("Error de red fatal, reconectando HLS...");
-                            hls.startLoad();
-                            break;
-                        case Hls.ErrorTypes.MEDIA_ERROR:
-                            console.log("Error de media fatal, recuperando fragmento...");
-                            hls.recoverMediaError();
-                            break;
-                        default:
-                            endedUrl = url;
-                            eventEnded.style.display = 'flex';
-                            loader.style.display = 'none';
-                            break;
-                    }
+        try {
+            if (!window.shakaInitialized) {
+                shaka.polyfill.installAll();
+                if (!shaka.Player.isBrowserSupported()) {
+                    console.error("Navegador no soporta Shaka Player");
+                    loader.style.display = 'none';
+                    return;
                 }
-            });
-        } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
-            video.src = url;
+                window.shakaInitialized = true;
+            }
+
+            if (!player) {
+                player = new shaka.Player(video);
+                // Configuración de búfer masivo (60s-120s) y tolerancia a errores de red
+                player.configure({
+                    streaming: {
+                        bufferingGoal: 60,
+                        rebufferingGoal: 15,
+                        bufferBehind: 30,
+                        stallEnabled: true,
+                        stallThreshold: 1,
+                        retryParameters: {
+                            maxAttempts: 15,
+                            baseDelay: 1000,
+                            backoffFactor: 2,
+                            timeout: 30000
+                        }
+                    }
+                });
+
+                player.addEventListener('error', (event) => {
+                    console.error("Error en Shaka Player:", event.detail);
+                    if (event.detail.severity === shaka.util.Error.Severity.CRITICAL) {
+                        endedUrl = url;
+                        eventEnded.style.display = 'flex';
+                        loader.style.display = 'none';
+                    }
+                });
+            }
+
+            await player.load(url);
             video.muted = false;
+            video.play().catch(() => {});
             loader.style.display = 'none';
+        } catch (e) {
+            console.error("Error cargando señal con Shaka:", e);
+            loader.style.display = 'none';
+            endedUrl = url;
+            eventEnded.style.display = 'flex';
         }
     }
 
