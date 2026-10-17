@@ -12,6 +12,7 @@
     <style>
         :root {
             --primary: #e50914;
+            --primary-hover: #b91c1c;
             --bg: #000000;
         }
 
@@ -47,6 +48,29 @@
             display: none;
         }
 
+        /* Botón Superior para Activar Sonido */
+        #audio-btn {
+            position: absolute;
+            top: 25px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 4500;
+            background: var(--primary);
+            color: #fff;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 20px;
+            font-weight: 800;
+            font-size: 13px;
+            cursor: pointer;
+            box-shadow: 0 4px 20px rgba(229, 9, 20, 0.5);
+            display: none;
+            transition: 0.2s;
+            align-items: center;
+            gap: 8px;
+        }
+        #audio-btn:hover { transform: translateX(-50%) scale(1.05); background: var(--primary-hover); }
+
         /* UI Overlays */
         .watermark { position: absolute; top: 30px; right: 30px; width: 100px; opacity: 0.5; pointer-events: none; z-index: 1000; }
 
@@ -64,8 +88,9 @@
 <div id="player-container">
     <div id="loader"></div>
     <div id="status-terminal">Iniciando...</div>
+    <button id="audio-btn"><i class="fas fa-volume-up"></i> 🔊 ACTIVAR SONIDO</button>
 
-    <!-- Con controles nativos predeterminados restaurados -->
+    <!-- Con controles nativos predeterminados -->
     <video id="video" autoplay playsinline controls disablepictureinpicture controlslist="nodownload noremoteplayback"></video>
 
     <img src="https://raw.githubusercontent.com/NovaplayGO/novaimg/main/NovaSports.png" class="watermark" alt="NovaPlay">
@@ -98,9 +123,12 @@
     const eventEnded = document.getElementById('event-ended');
     const fsBtn = document.getElementById('fullscreen-btn');
     const statusTerminal = document.getElementById('status-terminal');
+    const audioBtn = document.getElementById('audio-btn');
+
+    let isConnectedOnce = false;
 
     function updateStatus(msg, show = true) {
-        if (!statusTerminal) return;
+        if (isConnectedOnce || !statusTerminal) return;
         statusTerminal.textContent = msg;
         statusTerminal.style.display = show ? 'block' : 'none';
         statusTerminal.style.opacity = show ? '1' : '0';
@@ -174,24 +202,28 @@
             hls.attachMedia(video);
             hls.on(Hls.Events.MANIFEST_PARSED, () => {
                 video.muted = false;
-                video.play().catch(() => {
-                    // Fallback para autoplay estricto en navegadores móviles/TV
+                video.play().then(() => {
+                    audioBtn.style.display = 'none';
+                }).catch(() => {
+                    // Si el navegador bloquea el audio sin interacción, activar mute y mostrar botón superior
                     video.muted = true;
                     video.play().catch(() => {});
+                    audioBtn.style.display = 'flex';
                 });
                 loader.style.display = 'none';
                 updateStatus("Conectado.");
-                setTimeout(() => updateStatus("", false), 2000);
+                isConnectedOnce = true;
+                if (statusTerminal) statusTerminal.style.display = 'none';
             });
             hls.on(Hls.Events.ERROR, (e, d) => {
                 if (d.fatal) {
                     switch (d.type) {
                         case Hls.ErrorTypes.NETWORK_ERROR:
-                            updateStatus("Reconectando por error de red...");
+                            if (!isConnectedOnce) updateStatus("Reconectando por error de red...");
                             hls.startLoad();
                             break;
                         case Hls.ErrorTypes.MEDIA_ERROR:
-                            updateStatus("Recuperando medio...");
+                            if (!isConnectedOnce) updateStatus("Recuperando medio...");
                             hls.recoverMediaError();
                             break;
                         default:
@@ -206,13 +238,17 @@
         } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
             video.src = url;
             video.muted = false;
-            video.play().catch(() => {
+            video.play().then(() => {
+                audioBtn.style.display = 'none';
+            }).catch(() => {
                 video.muted = true;
                 video.play().catch(() => {});
+                audioBtn.style.display = 'flex';
             });
             loader.style.display = 'none';
             updateStatus("Conectado.");
-            setTimeout(() => updateStatus("", false), 2000);
+            isConnectedOnce = true;
+            if (statusTerminal) statusTerminal.style.display = 'none';
         }
     }
 
@@ -227,6 +263,15 @@
             await playSignal(url);
         }
     }
+
+    // Botón Superior para Activar Sonido
+    audioBtn.onclick = (e) => {
+        e.stopPropagation();
+        video.muted = false;
+        video.play().then(() => {
+            audioBtn.style.display = 'none';
+        }).catch(() => {});
+    };
 
     // Botón de Pantalla Completa (Derecha) - Toggle bidireccional
     fsBtn.onclick = (e) => {
@@ -244,8 +289,10 @@
     };
 
     function handleInteraction() {
-        video.muted = false;
-        video.play().catch(() => {});
+        if (video.muted) {
+            video.muted = false;
+            video.play().catch(() => {});
+        }
     }
 
     document.addEventListener('click', handleInteraction);
