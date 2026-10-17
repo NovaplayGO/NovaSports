@@ -30,9 +30,12 @@
         /* UI Overlays */
         .watermark { position: absolute; top: 30px; right: 30px; width: 100px; opacity: 0.5; pointer-events: none; z-index: 1000; }
 
-        #fullscreen-btn { position: absolute; bottom: 30px; right: 30px; z-index: 2000; width: 50px; height: 50px; border: none; border-radius: 50%; background: rgba(255, 255, 255, 0.1); backdrop-filter: blur(10px); color: white; font-size: 24px; cursor: pointer; opacity: 0; transition: 0.3s; display: flex; align-items: center; justify-content: center; }
-        #player-container:hover #fullscreen-btn, #player-container:hover .watermark { opacity: 1; }
-        #fullscreen-btn:hover { background: var(--primary); transform: scale(1.1); }
+        #fullscreen-btn, #play-btn { position: absolute; bottom: 30px; z-index: 2000; width: 50px; height: 50px; border: none; border-radius: 50%; background: rgba(255, 255, 255, 0.1); backdrop-filter: blur(10px); color: white; font-size: 20px; cursor: pointer; opacity: 0; transition: 0.3s; display: flex; align-items: center; justify-content: center; }
+        #fullscreen-btn { right: 30px; }
+        #play-btn { left: 30px; font-size: 18px; }
+
+        #player-container:hover #fullscreen-btn, #player-container:hover #play-btn, #player-container:hover .watermark { opacity: 1; }
+        #fullscreen-btn:hover, #play-btn:hover { background: var(--primary); transform: scale(1.1); }
 
         /* Custom Loading */
         #loader { position: absolute; width: 50px; height: 50px; border: 4px solid #333; border-top-color: var(--primary); border-radius: 50%; animation: spin 1s linear infinite; z-index: 10; }
@@ -44,10 +47,12 @@
 <div id="player-container">
     <div id="loader"></div>
 
-    <video id="video" autoplay playsinline controls disablepictureinpicture controlslist="nodownload noremoteplayback"></video>
+    <!-- Sin controles nativos predeterminados -->
+    <video id="video" autoplay playsinline disablepictureinpicture controlslist="nodownload noremoteplayback"></video>
 
     <img src="https://raw.githubusercontent.com/novaplaygo/novaimg/main/novasplash.webp" class="watermark" alt="NovaPlay">
 
+    <button id="play-btn" title="Reproducir / Reanudar">▶</button>
     <button id="fullscreen-btn" title="Pantalla completa">⛶</button>
 
     <!-- EVENTO FINALIZADO -->
@@ -75,6 +80,7 @@
     const loader = document.getElementById('loader');
     const eventEnded = document.getElementById('event-ended');
     const fsBtn = document.getElementById('fullscreen-btn');
+    const playBtn = document.getElementById('play-btn');
 
     let hls = null;
     let currentUrl = "";
@@ -173,18 +179,37 @@
         }
     }
 
-    function handleInteraction() {
+    // Botón de Play / Reanudar (Izquierda)
+    playBtn.onclick = (e) => {
+        e.stopPropagation();
+        video.muted = false;
+        video.play().then(() => {
+            playBtn.textContent = "▶";
+        }).catch(() => {});
+    };
+
+    // Botón de Pantalla Completa (Derecha) - Toggle bidireccional
+    fsBtn.onclick = (e) => {
+        e.stopPropagation();
         video.muted = false;
         video.play().catch(() => {});
         const elem = document.documentElement;
         if (!document.fullscreenElement && !document.webkitFullscreenElement) {
             if (elem.requestFullscreen) elem.requestFullscreen().catch(() => {});
+            else if (elem.webkitRequestFullscreen) elem.webkitRequestFullscreen();
+        } else {
+            if (document.exitFullscreen) document.exitFullscreen().catch(() => {});
+            else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
         }
+    };
+
+    function handleInteraction() {
+        video.muted = false;
+        video.play().catch(() => {});
     }
 
     document.addEventListener('click', handleInteraction);
     document.addEventListener('touchstart', handleInteraction);
-    fsBtn.onclick = handleInteraction;
 
     // Watchdog anti-congelamiento optimizado
     setInterval(() => {
