@@ -27,6 +27,26 @@
         #event-ended h1 { color: #fff; font-size: clamp(24px, 5vw, 42px); font-weight: 900; margin: 0 0 15px; }
         #event-ended p { color: #888; font-size: 18px; max-width: 600px; line-height: 1.5; margin: 0; }
 
+        /* Terminal de Estado en Letras Verdes (Arriba Izquierda) */
+        #status-terminal {
+            position: absolute;
+            top: 25px;
+            left: 25px;
+            z-index: 4000;
+            color: #00ff00;
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 13px;
+            font-weight: 700;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 10px 16px;
+            border-radius: 8px;
+            border: 1px solid rgba(0, 255, 0, 0.4);
+            text-shadow: 0 0 8px rgba(0, 255, 0, 0.7);
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.6);
+            transition: opacity 0.5s ease;
+            display: none;
+        }
+
         /* UI Overlays */
         .watermark { position: absolute; top: 30px; right: 30px; width: 100px; opacity: 0.5; pointer-events: none; z-index: 1000; }
 
@@ -46,6 +66,7 @@
 
 <div id="player-container">
     <div id="loader"></div>
+    <div id="status-terminal">Iniciando...</div>
 
     <!-- Sin controles nativos predeterminados -->
     <video id="video" autoplay playsinline disablepictureinpicture controlslist="nodownload noremoteplayback"></video>
@@ -81,6 +102,14 @@
     const eventEnded = document.getElementById('event-ended');
     const fsBtn = document.getElementById('fullscreen-btn');
     const playBtn = document.getElementById('play-btn');
+    const statusTerminal = document.getElementById('status-terminal');
+
+    function updateStatus(msg, show = true) {
+        if (!statusTerminal) return;
+        statusTerminal.textContent = msg;
+        statusTerminal.style.display = show ? 'block' : 'none';
+        statusTerminal.style.opacity = show ? '1' : '0';
+    }
 
     let hls = null;
     let currentUrl = "";
@@ -89,6 +118,7 @@
 
     async function fetchSafeData(action) {
         try {
+            updateStatus("Conectando con Servidor...");
             const authRes = await fetch(CONNECTOR_URL, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -96,6 +126,8 @@
             });
             const credentials = await authRes.json();
             const authHeader = "Basic " + btoa(`${APP_USER}:${credentials.password}`);
+
+            updateStatus("NovaPlay autorizó la Conexión.");
             const dataRes = await fetch(CONNECTOR_URL, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'Authorization': authHeader },
@@ -103,17 +135,22 @@
             });
             return await dataRes.json();
         } catch (e) {
+            updateStatus("Error de conexión con el servidor.");
             return null;
         }
     }
 
     async function getSignal() {
         try {
+            updateStatus("Conectando con Servidor...");
             const data = await fetchSafeData("obtener_json");
             if (!data) return "";
             for (const cat of data) {
                 const ch = (cat.items || []).find(i => i.name === "TIGO SPORTS #1");
-                if (ch) return ch.url || "";
+                if (ch) {
+                    updateStatus("Transmisión Eventos Permitido.");
+                    return ch.url || "";
+                }
             }
         } catch (e) {}
         return "";
@@ -144,20 +181,25 @@
                 video.muted = false;
                 video.play().catch(() => {});
                 loader.style.display = 'none';
+                updateStatus("Conectado.");
+                setTimeout(() => updateStatus("", false), 2000);
             });
             hls.on(Hls.Events.ERROR, (e, d) => {
                 if (d.fatal) {
                     switch (d.type) {
                         case Hls.ErrorTypes.NETWORK_ERROR:
+                            updateStatus("Reconectando por error de red...");
                             hls.startLoad();
                             break;
                         case Hls.ErrorTypes.MEDIA_ERROR:
+                            updateStatus("Recuperando medio...");
                             hls.recoverMediaError();
                             break;
                         default:
                             hls.destroy();
                             eventEnded.style.display = 'flex';
                             loader.style.display = 'none';
+                            updateStatus("Transmisión finalizada.", false);
                             break;
                     }
                 }
@@ -166,14 +208,18 @@
             video.src = url;
             video.muted = false;
             loader.style.display = 'none';
+            updateStatus("Conectado.");
+            setTimeout(() => updateStatus("", false), 2000);
         }
     }
 
     async function monitor() {
+        updateStatus("Iniciando...");
         const url = await getSignal();
         if (!url) {
             eventEnded.style.display = 'flex';
             loader.style.display = 'none';
+            updateStatus("Señal no disponible.", false);
         } else {
             await playSignal(url);
         }
